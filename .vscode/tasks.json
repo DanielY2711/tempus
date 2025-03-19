@@ -14,6 +14,7 @@
                 "${file}",
                 "activityTracker.cpp",
                 "windowGetter.cpp",
+                "databaseCreation.cpp",
                 "sqlite3.c",
                 "/link",
                 "User32.lib",
