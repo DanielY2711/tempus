@@ -1,0 +1,17 @@
+{
+    "configurations": [
+        {
+            "name": "debug DY",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${fileDirname}\\${fileBasenameNoExtension}.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "console": "integratedTerminal",
+            "preLaunchTask": "Build DY"
+        }
+    ],
+    "version": "2.0.0"
+}
