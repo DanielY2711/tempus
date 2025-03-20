@@ -13,12 +13,12 @@ namespace dbmng{
     //Insert tuple statement
     const char* insertNewTuple = 
         R"(INSERT INTO timeline (header, program, startTime, duration, activeIntervals, totalIntervals)
-        VALUE(?, ?, ?, ?, ?, ?);
+        VALUES(?, ?, ?, ?, ?, ?);
     )";
 
     const char* insertNewSumTuple =
         R"(INSERT INTO allTimeSum (header, program, date, duration, activeIntervals, totalIntervals)
-        VALUE(?, ?, ?, ?, ?, ?);
+        VALUES(?, ?, ?, ?, ?, ?);
     )";
     
     //unused
@@ -67,11 +67,10 @@ namespace dbmng{
 
 
     int getMidnight(std::chrono::system_clock::time_point point){
-        // Get current time from system_clock
-        auto now = std::chrono::system_clock::now();
+
 
         // Convert current time to time_t to work with std::tm
-        std::time_t current_time = std::chrono::system_clock::to_time_t(now);
+        std::time_t current_time = std::chrono::system_clock::to_time_t(point);
 
         // Convert time_t to tm structure
         std::tm tm = *std::localtime(&current_time);
@@ -107,6 +106,7 @@ namespace dbmng{
     // Function for adding new events into the daily and dailySum tables
     void processEvent(timeline::timeLineEvent event){
         int date = getMidnight(event.eventStartTime);
+        std::cout << " date of event " << date << std::endl; 
         // First we guranteed need to add the event into the timeline table
         checkSQLError(sqlite3_prepare_v2(eventsDB, insertNewTuple, -1, &sqlStatement, nullptr));
 
@@ -117,7 +117,9 @@ namespace dbmng{
         checkSQLError(sqlite3_bind_int(sqlStatement, 5, event.activity.active));
         checkSQLError(sqlite3_bind_int(sqlStatement, 6, event.activity.total)); 
 
-        checkSQLError(sqlite3_step(sqlStatement));
+        if (sqlite3_step(sqlStatement) != SQLITE_DONE){
+            std::cout << sqlite3_errcode(eventsDB) << std::endl; 
+        };
 
         checkSQLError(sqlite3_finalize(sqlStatement)); 
 
@@ -131,19 +133,22 @@ namespace dbmng{
             
             checkSQLError(sqlite3_finalize(sqlStatement)); 
 
-            checkSQLError(sqlite3_prepare16_v2(eventsDB, insertNewSumTuple, -1, &sqlStatement, nullptr));
+            checkSQLError(sqlite3_prepare_v2(eventsDB, insertNewSumTuple, -1, &sqlStatement, nullptr));
             checkSQLError(sqlite3_bind_text16(sqlStatement, 1, event.processHeader.c_str(), -1, SQLITE_STATIC));
             checkSQLError(sqlite3_bind_text16(sqlStatement, 2, event.processName.c_str(), -1, SQLITE_STATIC));
             checkSQLError(sqlite3_bind_int(sqlStatement, 3, date));
-            checkSQLError(sqlite3_bind_int(sqlStatement, 3, event.duration.count()));
-            checkSQLError(sqlite3_bind_int(sqlStatement, 4, event.activity.active));
-            checkSQLError(sqlite3_bind_int(sqlStatement, 5, event.activity.total)); 
+            checkSQLError(sqlite3_bind_int(sqlStatement, 4, event.duration.count()));
+            checkSQLError(sqlite3_bind_int(sqlStatement, 5, event.activity.active));
+            checkSQLError(sqlite3_bind_int(sqlStatement, 6, event.activity.total)); 
     
-            checkSQLError(sqlite3_step(sqlStatement));
+            if (sqlite3_step(sqlStatement) != SQLITE_DONE){
+                std::cout << sqlite3_errcode(eventsDB) << std::endl; 
+            };
         }
         // Seen header before, must update values
         else{
             // Get previous values
+            std::wcout << L"Header " << event.processHeader << L" seen earlier today" << std::endl; 
             int newDuration = sqlite3_column_int(sqlStatement, 0) + event.duration.count();
             int newActiveIntervals = sqlite3_column_int(sqlStatement, 1) + event.activity.active;
             int newTotalIntervals = sqlite3_column_int(sqlStatement, 2) + event.activity.total;
@@ -157,7 +162,9 @@ namespace dbmng{
             checkSQLError(sqlite3_bind_text16(sqlStatement, 4, event.processHeader.c_str(), -1, SQLITE_STATIC));
             checkSQLError(sqlite3_bind_int(sqlStatement, 5, date)); 
             
-            checkSQLError(sqlite3_step(sqlStatement));
+            if (sqlite3_step(sqlStatement) != SQLITE_DONE){
+                std::cout << sqlite3_errcode(eventsDB) << std::endl; 
+            };
         }
         checkSQLError(sqlite3_finalize(sqlStatement)); 
     }
@@ -188,7 +195,7 @@ namespace dbmng{
 
 int main() {
     
-
+    dbmng::startupDBMngr(); 
     timeline::timeLineEvent event1;
     timeline::timeLineEvent event2;
     timeline::timeLineEvent event3;
@@ -197,27 +204,27 @@ int main() {
     std::chrono::days day1(1);  // 1-day duration
     std::chrono::hours hour1(1);
     std::chrono::time_point now = std::chrono::system_clock::now(); 
-    
+    std::chrono::hours midh(18); 
     event1.eventStartTime = now; 
     event1.duration = hour1; 
     event1.processHeader = L"New Tab";
     event1.processName = L"Chrome";
     event1.activity.active = 10;
-    event1.activity.total = 100; 
+    event1.activity.total = 300; 
 
     event2.eventStartTime = now + hour1; 
     event2.duration = hour1; 
     event2.processHeader = L"New Tab";
     event2.processName = L"Chrome";
     event2.activity.active = 10;
-    event2.activity.total = 100; 
+    event2.activity.total = 400; 
 
-    event3.eventStartTime = now - day1; 
+    event3.eventStartTime = now - midh - hour1; 
     event3.duration = hour1 + hour1; 
     event3.processHeader = L"New Tab";
     event3.processName = L"Chrome";
     event3.activity.active = 10;
-    event3.activity.total = 100; 
+    event3.activity.total = 500; 
 
     event4.eventStartTime = now + hour1 + hour1; 
     event4.duration = hour1 + hour1; 
@@ -239,10 +246,21 @@ int main() {
         int ncol = sqlite3_column_count(dbmng::sqlStatement);
         for (int col = 0; col < ncol; ++col) {
             const char* colValue = (const char*)sqlite3_column_text(dbmng::sqlStatement, col);
-            std::cout << "Column " << col << ": " << (colValue ? colValue : "NULL") << " ";
+            std::cout << "| " << col << ": " << (colValue ? colValue : "NULL") << " ";
         } 
         std::cout << std::endl;
     }
+    sqlite3_finalize(dbmng::sqlStatement); 
+    std::cout << std::endl; 
+    sqlite3_prepare_v2(dbmng::eventsDB, allTimeSum, -1, &dbmng::sqlStatement, nullptr);
 
+    while (sqlite3_step(dbmng::sqlStatement) == SQLITE_ROW){
+        int ncol = sqlite3_column_count(dbmng::sqlStatement);
+        for (int col = 0; col < ncol; ++col) {
+            const char* colValue = (const char*)sqlite3_column_text(dbmng::sqlStatement, col);
+            std::cout << "| " << col << ": " << (colValue ? colValue : "NULL") << " ";
+        } 
+        std::cout << std::endl;
+    }
     return 0;
 }
